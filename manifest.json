@@ -1,0 +1,13 @@
+{
+    "display_name": "Chronicle Engine",
+    "loading_order": 50,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "style.css",
+    "author": "smolsn3k",
+    "version": "0.1.0",
+    "homePage": "https://github.com/smolsn3k/st-chronicle-engine",
+    "minimum_client_version": "1.13.0",
+    "auto_update": true
+}
