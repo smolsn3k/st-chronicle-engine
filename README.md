@@ -1,5 +1,7 @@
 # Chronicle Engine
 
+**English** | [Русский](README.ru.md)
+
 A plot and story engine for [SillyTavern](https://github.com/SillyTavern/SillyTavern). Build your own worlds as **chronicles** made of arcs, episodes and story beats, then let the model follow your structure while you control the pacing.
 
 Works on desktop and mobile. Progress is saved per chat.
@@ -11,6 +13,30 @@ Works on desktop and mobile. Progress is saved per chat.
 1. In SillyTavern, open **Extensions** → **Install extension**.
 2. Paste `https://github.com/smolsn3k/st-chronicle-engine` and install.
 3. Reload SillyTavern. A floating book button appears. Tap it to open Chronicle Engine.
+
+## Language
+
+The interface is available in English and Russian (Русский). The default is **Auto**, which follows SillyTavern's UI language and falls back to the browser language. You can change it at any time, and it applies instantly:
+
+- **Features** → **General** → **Language**, or
+- the Chronicle Engine panel in SillyTavern's extension settings.
+
+What changes with the language:
+
+- **The interface:** tabs, buttons, hints, notifications and dialogs.
+- **Side tasks:** when Russian is selected, the model is asked to write recaps, epilogues, "What's next?" ideas, check results and generated chronicles in Russian.
+- **What does not change:** the hidden guidance added to the prompt during chat stays in English. Nobody sees it, and models follow it best in English. It does not affect the language of your roleplay.
+
+Default names for new items ("Chronicle 1", "Arc 1", "Episode 1", "First beat") are created in the selected language. Existing chronicles are left alone.
+
+### Adding a language
+
+Translations live in `locales/`. The English source string is the key, so anything untranslated simply shows in English.
+
+1. Copy `locales/ru.js` to `locales/<code>.js` (for example `de.js`) and translate the values. Leave placeholders such as `{name}` as they are.
+2. Register it in `i18n.js`: add the import, an entry in `DICTS` and an entry in `LANGUAGES`.
+
+Pull requests with new translations are welcome.
 
 ## Quick start
 

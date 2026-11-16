@@ -6,6 +6,8 @@
  * https://github.com/smolsn3k/st-chronicle-engine
  */
 
+import { tr, setLanguage, getLanguage, LANGUAGES } from './i18n.js';
+
 const MODULE = 'chronicle_engine';
 const META_KEY = 'chronicle_engine';
 const PROMPT_KEY = 'chronicle_engine_guidance';
@@ -15,15 +17,15 @@ const STATE_LABEL = { locked: 'Locked', active: 'Active', completed: 'Completed'
 
 const PACE = {
     slow: {
-        label: 'Slow',
+        label: tr('Slow'),
         text: 'Let scenes breathe. Move the current beat forward only in small steps and do not resolve it quickly. Favor dialogue, atmosphere and character moments.',
     },
     normal: {
-        label: 'Normal',
+        label: tr('Normal'),
         text: 'Move the current beat forward at a natural pace, with steady progress each reply.',
     },
     fast: {
-        label: 'Fast forward',
+        label: tr('Fast forward'),
         text: 'Compress or summarize scenes, skip filler and travel time, and drive decisively toward the required events of the current beat.',
     },
 };
@@ -31,6 +33,7 @@ const PACE = {
 const DEFAULTS = {
     version: SCHEMA_VERSION,
     enabled: true,
+    language: 'auto',
     showFab: true,
     fab: { x: null, y: null },
     injectDepth: 2,
@@ -59,6 +62,8 @@ const $q = (sel, root = document) => root.querySelector(sel);
 const uid = () => Math.random().toString(36).slice(2, 10);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const clone = (o) => JSON.parse(JSON.stringify(o));
+/** Translate and escape every parameter, for strings that end up in HTML. */
+const th = (key, params = {}) => tr(key, Object.fromEntries(Object.entries(params).map(([k, v]) => [k, esc(v)])));
 
 function toast(type, msg) {
     try { window.toastr[type](msg, 'Chronicle Engine'); } catch { console.log('[Chronicle Engine]', msg); }
@@ -108,6 +113,7 @@ function loadSettings() {
         fab: { ...DEFAULTS.fab, ...(cur.fab || {}) },
         chronicles: Array.isArray(cur.chronicles) ? cur.chronicles : [],
     };
+    setLanguage(es[MODULE].language);
 }
 const saveSettings = () => ctx().saveSettingsDebounced();
 
@@ -147,12 +153,12 @@ function isOn() {
 /* Chronicle model                                                     */
 /* ------------------------------------------------------------------ */
 
-const newBeat = (title = 'New beat') => ({
+const newBeat = (title = tr('New beat')) => ({
     id: uid(), title, description: '', goals: [], requiredEvents: [], priority: 'should', branchOf: '', branchTrigger: '',
 });
-const newEpisode = (n = 1) => ({ id: uid(), title: `Episode ${n}`, beats: [newBeat('First beat')] });
-const newArc = (n = 1) => ({ id: uid(), title: `Arc ${n}`, summary: '', pacing: '', episodes: [newEpisode(1)] });
-const newChronicle = (title = 'New chronicle') => ({
+const newEpisode = (n = 1) => ({ id: uid(), title: tr('Episode {n}', { n }), beats: [newBeat(tr('First beat'))] });
+const newArc = (n = 1) => ({ id: uid(), title: tr('Arc {n}', { n }), summary: '', pacing: '', episodes: [newEpisode(1)] });
+const newChronicle = (title = tr('New chronicle')) => ({
     id: uid(), schema: SCHEMA_VERSION, title, description: '', lorebook: '', characters: [], draft: false, arcs: [newArc(1)],
 });
 
@@ -188,7 +194,7 @@ function normalizeChronicle(raw) {
     const str = (v) => (v == null ? '' : String(v));
     const ch = {
         id: uid(), schema: SCHEMA_VERSION,
-        title: str(raw.title) || 'Untitled chronicle',
+        title: str(raw.title) || tr('Untitled chronicle'),
         description: str(raw.description),
         lorebook: typeof raw.lorebook === 'string' ? raw.lorebook : '',
         characters: lines(raw.characters),
@@ -197,16 +203,16 @@ function normalizeChronicle(raw) {
     };
     for (const a of Array.isArray(raw.arcs) ? raw.arcs : []) {
         const arc = {
-            id: uid(), title: str(a.title) || 'Untitled arc', summary: str(a.summary),
+            id: uid(), title: str(a.title) || tr('Untitled arc'), summary: str(a.summary),
             pacing: ['slow', 'normal', 'fast'].includes(a.pacing) ? a.pacing : '', episodes: [],
         };
         for (const e of Array.isArray(a.episodes) ? a.episodes : []) {
-            const ep = { id: uid(), title: str(e.title) || 'Untitled episode', beats: [] };
+            const ep = { id: uid(), title: str(e.title) || tr('Untitled episode'), beats: [] };
             const rawBeats = Array.isArray(e.beats) ? e.beats : [];
             const idMap = {}; const titleMap = {};
             rawBeats.forEach((b) => {
                 const nb = {
-                    id: uid(), title: str(b.title) || 'Untitled beat', description: str(b.description),
+                    id: uid(), title: str(b.title) || tr('Untitled beat'), description: str(b.description),
                     goals: lines(b.goals), requiredEvents: lines(b.requiredEvents),
                     priority: b.priority === 'must' ? 'must' : 'should', branchOf: '', branchTrigger: str(b.branchTrigger),
                 };
@@ -344,13 +350,13 @@ function advance(kind = 'completed') {
     commit();
 
     const F = S().features;
-    if (F.loreSuggest && kind === 'completed') enqueue('Looking for lore to save', () => suggestLore(cur.beat));
+    if (F.loreSuggest && kind === 'completed') enqueue(tr('Looking for lore to save'), () => suggestLore(cur.beat));
     if (arcEnded && here) {
-        if (!next) toast('success', 'Chronicle complete.');
-        if (F.epilogue) enqueue('Preparing epilogue offer', () => offerEpilogue(here.arc));
-        if (F.whatsNext) enqueue('Thinking about what comes next', () => whatsNext());
+        if (!next) toast('success', tr('Chronicle complete.'));
+        if (F.epilogue) enqueue(tr('Preparing epilogue offer'), () => offerEpilogue(here.arc));
+        if (F.whatsNext) enqueue(tr('Thinking about what comes next'), () => whatsNext());
     }
-    if (episodeChanged && F.recap) enqueue('Writing recap', () => generateRecap(next.ep));
+    if (episodeChanged && F.recap) enqueue(tr('Writing recap'), () => generateRecap(next.ep));
 }
 
 function rewind() {
@@ -367,7 +373,7 @@ function rewind() {
         idx = list.findIndex((x) => x.beat.id === anchor);
     }
     const prev = list[idx - 1];
-    if (!prev) { toast('info', 'Already at the first beat.'); return; }
+    if (!prev) { toast('info', tr('Already at the first beat.')); return; }
     if (cur) st.beatStates[cur.beat.id] = 'locked';
     if (anchor) st.beatStates[anchor] = 'locked';
     st.history = (st.history || []).filter((id) => id !== prev.beat.id);
@@ -405,7 +411,15 @@ function profiles() {
     return ctx().extensionSettings.connectionManager?.profiles || [];
 }
 
+/** Makes visible side-task output follow the chosen language (the hidden story prompt stays English). */
+function langNote() {
+    return getLanguage() === 'ru'
+        ? ' Write every human-readable text value or reply in Russian. Keep JSON keys, booleans and fixed values such as "must", "should" and "completed" exactly as specified.'
+        : '';
+}
+
 async function sideCall(system, user, maxTokens = 600) {
+    system += langNote();
     const c = ctx();
     const profileId = S().profileId;
     if (profileId && c.ConnectionManagerRequestService) {
@@ -416,7 +430,7 @@ async function sideCall(system, user, maxTokens = 600) {
         );
         return String(r?.content ?? '').trim();
     }
-    if (profileId) toast('warning', 'This SillyTavern version cannot run side tasks on another profile. Using the current connection.');
+    if (profileId) toast('warning', tr('This SillyTavern version cannot run side tasks on another profile. Using the current connection.'));
     try {
         const out = await c.generateRaw({ prompt: user, systemPrompt: system, responseLength: maxTokens });
         return String(out ?? '').trim();
@@ -434,7 +448,7 @@ function enqueue(label, fn, btn) {
         .then(fn)
         .catch((e) => {
             console.error('[Chronicle Engine]', e);
-            toast('error', `${label} failed: ${e?.message || e}`);
+            toast('error', tr('{label} failed: {error}', { label, error: e?.message || e }));
         })
         .finally(() => { if (btn) btn.disabled = false; });
     return taskChain;
@@ -466,32 +480,32 @@ async function judgeBeat(auto = false) {
     const user = `Beat to check:\n${beatSummary(cur.beat)}\n\nRecent messages:\n${recentChat(12)}\n\nHave the required events happened and the goals been reached? If no events are listed, judge whether the description has played out.`;
     const j = parseJson(await sideCall(system, user, 300));
     if (!j || typeof j !== 'object') {
-        if (!auto) toast('warning', 'Could not read the beat check. Try again.');
+        if (!auto) toast('warning', tr('Could not read the beat check. Try again.'));
         return;
     }
     if (j.completed) {
         await showModal({
-            title: 'This beat looks complete',
+            title: tr('This beat looks complete'),
             body: textBlock(`${cur.beat.title}\n\n${j.reason || ''}`),
             buttons: [
-                { label: 'Complete beat', primary: true, onClick: () => advance('completed') },
-                { label: 'Not yet' },
+                { label: tr('Complete beat'), primary: true, onClick: () => advance('completed') },
+                { label: tr('Not yet') },
             ],
         });
     } else if (!auto) {
-        const missing = Array.isArray(j.missing) && j.missing.length ? `Still missing: ${j.missing.join('; ')}` : (j.reason || '');
-        await showModal({ title: 'Not complete yet', body: textBlock(missing), buttons: [{ label: 'Close' }] });
+        const missing = Array.isArray(j.missing) && j.missing.length ? tr('Still missing: {items}', { items: j.missing.join('; ') }) : (j.reason || '');
+        await showModal({ title: tr('Not complete yet'), body: textBlock(missing), buttons: [{ label: tr('Close') }] });
     }
 }
 
 async function showTextResult(title, text) {
     await showModal({
         title,
-        body: textBlock(text || '(Empty reply)'),
+        body: textBlock(text || tr('(Empty reply)')),
         buttons: [
-            { label: 'Copy', onClick: () => navigator.clipboard?.writeText(text).then(() => toast('success', 'Copied')) },
-            { label: 'Post to chat', onClick: () => postToChat(text) },
-            { label: 'Close', primary: true },
+            { label: tr('Copy'), onClick: () => navigator.clipboard?.writeText(text).then(() => toast('success', tr('Copied'))) },
+            { label: tr('Post to chat'), onClick: () => postToChat(text) },
+            { label: tr('Close'), primary: true },
         ],
     });
 }
@@ -501,7 +515,7 @@ async function postToChat(text) {
         await ctx().executeSlashCommandsWithOptions(`/sys ${String(text).replace(/\|/g, '{{pipe}}')}`);
     } catch (e) {
         console.warn(e);
-        toast('warning', 'Could not post to chat. Use Copy instead.');
+        toast('warning', tr('Could not post to chat. Use Copy instead.'));
     }
 }
 
@@ -511,16 +525,16 @@ async function generateRecap(ep) {
     const titles = (st.history || []).slice(-8).map((id) => findBeat(ch, id)?.beat.title).filter(Boolean);
     const system = 'You write short story recaps for a roleplay. Plain prose, past tense, 3 to 5 sentences. Recap only events that actually happened. Do not add new events or foreshadow.';
     const user = `Story: ${ch.title}\nBeats completed recently: ${titles.join('; ') || 'none'}\nEpisode starting now: ${ep.title}\n\nRecent messages:\n${recentChat(16)}\n\nWrite the recap.`;
-    await showTextResult(`Recap: ${ep.title}`, await sideCall(system, user, 350));
+    await showTextResult(tr('Recap: {title}', { title: ep.title }), await sideCall(system, user, 350));
 }
 
 async function offerEpilogue(arc) {
     await showModal({
-        title: 'Arc complete',
-        body: textBlock(`"${arc.title}" is finished. Generate an epilogue?`),
+        title: tr('Arc complete'),
+        body: textBlock(tr('"{title}" is finished. Generate an epilogue?', { title: arc.title })),
         buttons: [
-            { label: 'Generate epilogue', primary: true, onClick: () => enqueue('Writing epilogue', () => generateEpilogue(arc)) },
-            { label: 'Not now' },
+            { label: tr('Generate epilogue'), primary: true, onClick: () => enqueue(tr('Writing epilogue'), () => generateEpilogue(arc)) },
+            { label: tr('Not now') },
         ],
     });
 }
@@ -529,7 +543,7 @@ async function generateEpilogue(arc) {
     const ch = activeChron();
     const system = 'You write short epilogues for a roleplay arc. Literary narration, 2 to 4 paragraphs, past tense. Reflect on what happened and how it changed the characters. Do not start the next arc.';
     const user = `Story: ${ch.title}\nArc: ${arc.title}\nArc summary: ${arc.summary || '(none)'}\nBeats in this arc: ${arc.episodes.flatMap((e) => e.beats).filter((b) => !b.branchOf).map((b) => b.title).join('; ')}\n\nRecent messages:\n${recentChat(14)}\n\nWrite the epilogue.`;
-    await showTextResult(`Epilogue: ${arc.title}`, await sideCall(system, user, 700));
+    await showTextResult(tr('Epilogue: {title}', { title: arc.title }), await sideCall(system, user, 700));
 }
 
 async function whatsNext() {
@@ -543,7 +557,7 @@ async function whatsNext() {
     const branches = cur ? cur.ep.beats.filter((b) => b.branchOf === cur.beat.id).map((b) => `${b.title} (${b.branchTrigger || 'no trigger'})`) : [];
     const system = 'You are a story advisor for a roleplay. Be concise and concrete. Give exactly 3 numbered options, each one or two sentences.';
     const user = `Story: ${ch.title}\nCompleted beats: ${doneTitles.join('; ') || 'none'}\nPlanned next: ${upcoming}\nNext arc: ${nextArc ? `${nextArc.title}: ${nextArc.summary}` : 'none planned'}\nAvailable branches: ${branches.join('; ') || 'none'}\nBeats left on the main line: ${list.filter((x) => !isDone(st, x.beat.id)).length}\n\nRecent messages:\n${recentChat(8)}\n\nSuggest what could happen next: the planned path, a branch, or a fresh direction.`;
-    await showTextResult("What's next?", await sideCall(system, user, 400));
+    await showTextResult(tr("What's next?"), await sideCall(system, user, 400));
 }
 
 async function checkContinuity() {
@@ -562,11 +576,11 @@ async function checkContinuity() {
     const user = `Completed story beats:\n${done.map((b) => `- ${b.title}: ${b.description}`).join('\n') || '(none)'}\n\nEstablished lore:\n${lore || '(none)'}\n\nRecent messages:\n${recentChat(8)}\n\nList any statements in the recent messages that contradict the completed beats or the lore.`;
     const j = parseJson(await sideCall(system, user, 500));
     const issues = Array.isArray(j?.issues) ? j.issues : null;
-    if (!issues) { toast('warning', 'Could not read the continuity check. Try again.'); return; }
+    if (!issues) { toast('warning', tr('Could not read the continuity check. Try again.')); return; }
     const text = issues.length
-        ? issues.map((i, n) => `${n + 1}. ${i.issue}${i.evidence ? `\n   Evidence: ${i.evidence}` : ''}`).join('\n\n')
-        : 'No contradictions found in the last messages.';
-    await showModal({ title: 'Continuity check', body: textBlock(text), buttons: [{ label: 'Close', primary: true }] });
+        ? issues.map((i, n) => `${n + 1}. ${i.issue}${i.evidence ? `\n   ${tr('Evidence:')} ${i.evidence}` : ''}`).join('\n\n')
+        : tr('No contradictions found in the last messages.');
+    await showModal({ title: tr('Continuity check'), body: textBlock(text), buttons: [{ label: tr('Close'), primary: true }] });
 }
 
 async function suggestLore(beat) {
@@ -588,18 +602,18 @@ async function suggestLore(beat) {
         wrap.append(row);
     });
     await showModal({
-        title: `Add to ${ch.lorebook}?`,
+        title: tr('Add to {name}?', { name: ch.lorebook }),
         body: wrap,
         buttons: [
             {
-                label: 'Add selected', primary: true,
+                label: tr('Add selected'), primary: true,
                 onClick: async (body) => {
                     const picked = [...body.querySelectorAll('input:checked')].map((el) => items[+el.dataset.i]);
                     for (const it of picked) await addEntry(ch.lorebook, { keys: it.keys.map(String), content: String(it.content), comment: 'Added by Chronicle Engine' });
-                    if (picked.length) toast('success', `Added ${picked.length} lorebook ${picked.length === 1 ? 'entry' : 'entries'}.`);
+                    if (picked.length) toast('success', picked.length === 1 ? tr('Added 1 lorebook entry.') : tr('Added {n} lorebook entries.', { n: picked.length }));
                 },
             },
-            { label: 'Skip' },
+            { label: tr('Skip') },
         ],
     });
 }
@@ -654,7 +668,7 @@ Source (${sourceLabel}):
 ${sourceText}`;
     const j = parseJson(await sideCall(system, user, 4000));
     if (!j || !Array.isArray(j.arcs) || !j.arcs.length) {
-        toast('error', 'The reply was cut off or unreadable. Try a shorter source or a model with a longer output limit.');
+        toast('error', tr('The reply was cut off or unreadable. Try a shorter source or a model with a longer output limit.'));
         return;
     }
     const ch = normalizeChronicle({ ...j, draft: true, lorebook: lorebookName });
@@ -663,7 +677,7 @@ ${sourceText}`;
     ui.view = 'edit';
     saveSettings();
     render();
-    toast('success', 'Draft chronicle created. Review it before you use it.');
+    toast('success', tr('Draft chronicle created. Review it before you use it.'));
 }
 
 /* ------------------------------------------------------------------ */
@@ -685,7 +699,7 @@ async function exportChronicle(ch, withLorebook) {
         try {
             const data = await loadBook(ch.lorebook);
             if (data) payload.lorebook = { name: ch.lorebook, data };
-        } catch { toast('warning', 'Could not read the lorebook. Exporting the chronicle only.'); }
+        } catch { toast('warning', tr('Could not read the lorebook. Exporting the chronicle only.')); }
     }
     const file = `${(ch.title || 'chronicle').replace(/[^\w-]+/g, '_')}.chronicle.json`;
     download(file, JSON.stringify(payload, null, 2));
@@ -693,14 +707,14 @@ async function exportChronicle(ch, withLorebook) {
 
 async function importChronicle(text) {
     const raw = parseJson(text);
-    if (!raw || typeof raw !== 'object') { toast('error', 'That is not valid JSON.'); return; }
+    if (!raw || typeof raw !== 'object') { toast('error', tr('That is not valid JSON.')); return; }
     const src = raw.chronicle || raw;
-    if (!Array.isArray(src.arcs)) { toast('error', 'No arcs found. Is this a Chronicle Engine file?'); return; }
+    if (!Array.isArray(src.arcs)) { toast('error', tr('No arcs found. Is this a Chronicle Engine file?')); return; }
     const ch = normalizeChronicle(src);
     if (raw.lorebook?.name && raw.lorebook?.data) {
         try {
             const exists = (await lorebookNames()).includes(raw.lorebook.name);
-            if (!exists || window.confirm(`A lorebook named "${raw.lorebook.name}" already exists. Overwrite it with the imported one?`)) {
+            if (!exists || window.confirm(tr('A lorebook named "{name}" already exists. Overwrite it with the imported one?', { name: raw.lorebook.name }))) {
                 await saveBook(raw.lorebook.name, raw.lorebook.data);
                 try { await (await WI()).updateWorldInfoList?.(); } catch { /* optional */ }
             }
@@ -708,7 +722,7 @@ async function importChronicle(text) {
             await refreshBooks();
         } catch (e) {
             console.warn(e);
-            toast('warning', 'Imported the chronicle, but could not save its lorebook.');
+            toast('warning', tr('Imported the chronicle, but could not save its lorebook.'));
         }
     }
     S().chronicles.push(ch);
@@ -716,7 +730,7 @@ async function importChronicle(text) {
     ui.view = 'edit';
     saveSettings();
     render();
-    toast('success', `Imported "${ch.title}".`);
+    toast('success', tr('Imported "{title}".', { title: ch.title }));
 }
 
 /* ------------------------------------------------------------------ */
@@ -735,7 +749,7 @@ const textBlock = (text) => {
 
 function showModal({ title, body, buttons }) {
     return new Promise((resolve) => {
-        modalQueue.push({ title, body, buttons: buttons || [{ label: 'Close', primary: true }], resolve });
+        modalQueue.push({ title, body, buttons: buttons || [{ label: tr('Close'), primary: true }], resolve });
         pumpModal();
     });
 }
@@ -781,8 +795,8 @@ const editing = () => S().chronicles.find((x) => x.id === ui.editId) || activeCh
 
 const emptyState = (title, text, extra = '') => `<div class="ce-empty"><h3>${esc(title)}</h3><p>${esc(text)}</p>${extra}</div>`;
 
-const strip = (items, st) => `<div class="ce-strip" role="img" aria-label="Beat progress">${items.map((x) =>
-    `<i class="ce-seg s-${stateOf(st, x.beat.id)}" title="${esc(x.beat.title)}: ${STATE_LABEL[stateOf(st, x.beat.id)]}"></i>`).join('')}</div>`;
+const strip = (items, st) => `<div class="ce-strip" role="img" aria-label="${tr('Beat progress')}">${items.map((x) =>
+    `<i class="ce-seg s-${stateOf(st, x.beat.id)}" title="${esc(x.beat.title)}: ${tr(STATE_LABEL[stateOf(st, x.beat.id)])}"></i>`).join('')}</div>`;
 
 const bar = (done, total) => {
     const pct = total ? Math.round((done / total) * 100) : 0;
@@ -795,30 +809,30 @@ function profileOptions(selected) {
 
 function renderDash() {
     const c = ctx();
-    if (!c.chatId) return emptyState('Open a chat first', 'Chronicle Engine keeps its progress inside each chat.');
+    if (!c.chatId) return emptyState(tr('Open a chat first'), tr('Chronicle Engine keeps its progress inside each chat.'));
     const st = cs(true);
     const chrons = S().chronicles;
     const ch = activeChron();
 
     let h = `<section class="ce-card">
-        <label class="ce-field"><span>Chronicle in this chat</span>
-            <select class="ce-in" data-sel="chron"><option value="">None</option>${chrons.map((x) => `<option value="${x.id}" ${x.id === st.chronicleId ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select>
+        <label class="ce-field"><span>${tr('Chronicle in this chat')}</span>
+            <select class="ce-in" data-sel="chron"><option value="">${tr('None')}</option>${chrons.map((x) => `<option value="${x.id}" ${x.id === st.chronicleId ? 'selected' : ''}>${esc(x.title)}</option>`).join('')}</select>
         </label>
-        <label class="ce-switch"><input type="checkbox" data-sel="chatenabled" ${st.enabled !== false ? 'checked' : ''}><span><b>Active in this chat</b></span></label>
-        ${S().enabled ? '' : '<p class="ce-note">Chronicle Engine is switched off for all chats. Turn it on in Features.</p>'}
+        <label class="ce-switch"><input type="checkbox" data-sel="chatenabled" ${st.enabled !== false ? 'checked' : ''}><span><b>${tr('Active in this chat')}</b></span></label>
+        ${S().enabled ? '' : `<p class="ce-note">${tr('Chronicle Engine is switched off for all chats. Turn it on in Features.')}</p>`}
     </section>`;
 
     if (!ch) {
         return h + emptyState(
-            chrons.length ? 'Pick a chronicle' : 'No chronicles yet',
-            chrons.length ? 'Choose one above to start steering this chat.' : 'Create one in Edit, import one, or generate a draft in Worlds.',
-            `<button class="ce-btn ce-primary" data-view="edit">${chrons.length ? 'Open Edit' : 'Create a chronicle'}</button>`,
+            chrons.length ? tr('Pick a chronicle') : tr('No chronicles yet'),
+            chrons.length ? tr('Choose one above to start steering this chat.') : tr('Create one in Edit, import one, or generate a draft in Worlds.'),
+            `<button class="ce-btn ce-primary" data-view="edit">${chrons.length ? tr('Open Edit') : tr('Create a chronicle')}</button>`,
         );
     }
 
     ensureState();
     const list = mainBeats(ch);
-    if (!list.length) return h + emptyState('No beats yet', 'Add arcs, episodes and beats in Edit.', '<button class="ce-btn ce-primary" data-view="edit">Open Edit</button>');
+    if (!list.length) return h + emptyState(tr('No beats yet'), tr('Add arcs, episodes and beats in Edit.'), `<button class="ce-btn ce-primary" data-view="edit">${tr('Open Edit')}</button>`);
 
     const doneN = list.filter((x) => isDone(st, x.beat.id)).length;
     const cur = st.activeBeatId ? findBeat(ch, st.activeBeatId) : null;
@@ -826,9 +840,9 @@ function renderDash() {
     const chatPace = st.pacing || S().defaultPacing;
 
     h += `<section class="ce-card">
-        <div class="ce-row"><h2 class="ce-h">${esc(ch.title)}</h2>${ch.draft ? '<span class="ce-chip ce-chip-draft">Draft</span>' : ''}</div>
+        <div class="ce-row"><h2 class="ce-h">${esc(ch.title)}</h2>${ch.draft ? `<span class="ce-chip ce-chip-draft">${tr('Draft')}</span>` : ''}</div>
         ${bar(doneN, list.length)}
-        <p class="ce-meta">${doneN} of ${list.length} beats done</p>`;
+        <p class="ce-meta">${tr('{done} of {total} beats done', { done: doneN, total: list.length })}</p>`;
 
     if (cur) {
         const arcBeats = list.filter((x) => x.arc.id === cur.arc.id);
@@ -842,24 +856,24 @@ function renderDash() {
     h += '</section>';
 
     if (!cur) {
-        h += `<section class="ce-card ce-done"><h3 class="ce-h3">Chronicle complete</h3><p>Every beat is done or skipped. You can rewind to reopen the last beat.</p>
-            <div class="ce-actions"><button class="ce-btn" data-act="rewind">Rewind</button></div></section>`;
+        h += `<section class="ce-card ce-done"><h3 class="ce-h3">${tr('Chronicle complete')}</h3><p>${tr('Every beat is done or skipped. You can rewind to reopen the last beat.')}</p>
+            <div class="ce-actions"><button class="ce-btn" data-act="rewind">${tr('Rewind')}</button></div></section>`;
     } else {
         const b = cur.beat;
         const branches = cur.ep.beats.filter((x) => x.branchOf === b.id);
         h += `<section class="ce-card ce-beatcard s-${stateOf(st, b.id)}">
-            <div class="ce-row"><h3 class="ce-h3">${esc(b.title)}</h3><span class="ce-chip ${b.priority === 'must' ? 'ce-chip-must' : ''}">${b.priority === 'must' ? 'Must happen' : 'Should happen'}</span></div>
-            ${b.branchOf ? '<p class="ce-note">On a branch. Completing it returns to the main story.</p>' : ''}
+            <div class="ce-row"><h3 class="ce-h3">${esc(b.title)}</h3><span class="ce-chip ${b.priority === 'must' ? 'ce-chip-must' : ''}">${b.priority === 'must' ? tr('Must happen') : tr('Should happen')}</span></div>
+            ${b.branchOf ? `<p class="ce-note">${tr('On a branch. Completing it returns to the main story.')}</p>` : ''}
             ${b.description ? `<p>${esc(b.description)}</p>` : ''}
-            ${b.goals.length ? `<p class="ce-lbl">Goals</p><ul class="ce-ul">${b.goals.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}
-            ${b.requiredEvents.length ? `<p class="ce-lbl">Required events</p><ul class="ce-ul">${b.requiredEvents.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}
+            ${b.goals.length ? `<p class="ce-lbl">${tr('Goals')}</p><ul class="ce-ul">${b.goals.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}
+            ${b.requiredEvents.length ? `<p class="ce-lbl">${tr('Required events')}</p><ul class="ce-ul">${b.requiredEvents.map((g) => `<li>${esc(g)}</li>`).join('')}</ul>` : ''}
             <div class="ce-actions">
-                <button class="ce-btn ce-primary" data-act="complete">Complete beat</button>
-                <button class="ce-btn" data-act="skip">Skip</button>
-                <button class="ce-btn" data-act="rewind">Rewind</button>
-                ${S().features.judge ? '<button class="ce-btn" data-act="check">Check beat</button>' : ''}
+                <button class="ce-btn ce-primary" data-act="complete">${tr('Complete beat')}</button>
+                <button class="ce-btn" data-act="skip">${tr('Skip')}</button>
+                <button class="ce-btn" data-act="rewind">${tr('Rewind')}</button>
+                ${S().features.judge ? `<button class="ce-btn" data-act="check">${tr('Check beat')}</button>` : ''}
             </div>
-            ${branches.length ? `<p class="ce-lbl">Branch</p><div class="ce-actions">${branches.map((x) => `<button class="ce-btn" data-act="branch" data-id="${x.id}" title="${esc(x.branchTrigger)}">${esc(x.title)}</button>`).join('')}</div>` : ''}
+            ${branches.length ? `<p class="ce-lbl">${tr('Branch')}</p><div class="ce-actions">${branches.map((x) => `<button class="ce-btn" data-act="branch" data-id="${x.id}" title="${esc(x.branchTrigger)}">${esc(x.title)}</button>`).join('')}</div>` : ''}
         </section>`;
 
         const ordered = [];
@@ -867,41 +881,41 @@ function renderDash() {
             ordered.push(m);
             cur.ep.beats.filter((x) => x.branchOf === m.id).forEach((x) => ordered.push(x));
         });
-        h += `<section class="ce-card"><p class="ce-lbl">Beats in this episode</p><ul class="ce-beats">${ordered.map((x) => {
+        h += `<section class="ce-card"><p class="ce-lbl">${tr('Beats in this episode')}</p><ul class="ce-beats">${ordered.map((x) => {
             const s = stateOf(st, x.id);
             return `<li class="ce-beat s-${s}${x.branchOf ? ' is-branch' : ''}"><span class="ce-dot"></span>
-                <span class="ce-beat-t"><b>${esc(x.title)}</b>${x.branchOf ? `<small>Branch: ${esc(x.branchTrigger || 'no trigger set')}</small>` : `<small>${STATE_LABEL[s]}</small>`}</span>
-                ${x.id === st.activeBeatId ? '' : `<button class="ce-mini" data-act="jump" data-id="${x.id}">Go here</button>`}</li>`;
+                <span class="ce-beat-t"><b>${esc(x.title)}</b>${x.branchOf ? `<small>${th('Branch: {trigger}', { trigger: x.branchTrigger || tr('no trigger set') })}</small>` : `<small>${tr(STATE_LABEL[s])}</small>`}</span>
+                ${x.id === st.activeBeatId ? '' : `<button class="ce-mini" data-act="jump" data-id="${x.id}">${tr('Go here')}</button>`}</li>`;
         }).join('')}</ul></section>`;
     }
 
     const arcOverride = cur?.arc.pacing;
-    h += `<section class="ce-card"><p class="ce-lbl">Pacing</p>
-        <div class="ce-seg-ctl" role="group" aria-label="Pacing">${Object.entries(PACE).map(([k, v]) =>
-            `<button class="ce-btn ${chatPace === k ? 'ce-on' : ''}" data-act="pace" data-v="${k}" aria-pressed="${chatPace === k}">${v.label}</button>`).join('')}</div>
-        ${arcOverride ? `<p class="ce-note">This arc overrides the chat pace: ${PACE[arcOverride].label}.</p>` : `<p class="ce-note">Now using: ${PACE[pace].label}.</p>`}
+    h += `<section class="ce-card"><p class="ce-lbl">${tr('Pacing')}</p>
+        <div class="ce-seg-ctl" role="group" aria-label="${tr('Pacing')}">${Object.entries(PACE).map(([k, v]) =>
+            `<button class="ce-btn ${chatPace === k ? 'ce-on' : ''}" data-act="pace" data-v="${k}" aria-pressed="${chatPace === k}">${tr(v.label)}</button>`).join('')}</div>
+        ${arcOverride ? `<p class="ce-note">${tr('This arc overrides the chat pace: {pace}.', { pace: tr(PACE[arcOverride].label) })}</p>` : `<p class="ce-note">${tr('Now using: {pace}.', { pace: tr(PACE[pace].label) })}</p>`}
     </section>`;
 
     const F = S().features;
     const tools = [
-        F.whatsNext && '<button class="ce-btn" data-act="whatsnext">What\'s next?</button>',
-        F.continuity && '<button class="ce-btn" data-act="continuity">Check continuity</button>',
-        F.recap && cur && '<button class="ce-btn" data-act="recap">Recap</button>',
-        F.epilogue && '<button class="ce-btn" data-act="epilogue">Epilogue</button>',
+        F.whatsNext && `<button class="ce-btn" data-act="whatsnext">${tr("What's next?")}</button>`,
+        F.continuity && `<button class="ce-btn" data-act="continuity">${tr('Check continuity')}</button>`,
+        F.recap && cur && `<button class="ce-btn" data-act="recap">${tr('Recap')}</button>`,
+        F.epilogue && `<button class="ce-btn" data-act="epilogue">${tr('Epilogue')}</button>`,
     ].filter(Boolean);
-    if (tools.length) h += `<section class="ce-card"><p class="ce-lbl">Tools</p><div class="ce-actions">${tools.join('')}</div></section>`;
+    if (tools.length) h += `<section class="ce-card"><p class="ce-lbl">${tr('Tools')}</p><div class="ce-actions">${tools.join('')}</div></section>`;
 
     const profs = profiles();
     const cmSel = ctx().extensionSettings.connectionManager?.selectedProfile;
-    h += `<section class="ce-card"><p class="ce-lbl">Profiles</p>
+    h += `<section class="ce-card"><p class="ce-lbl">${tr('Profiles')}</p>
         ${profs.length ? `
-        <label class="ce-field"><span>Side tasks run on</span>
-            <select class="ce-in" data-sel="profile"><option value="">Current connection</option>${profileOptions(S().profileId)}</select></label>
-        <label class="ce-field"><span>Chat profile</span>
+        <label class="ce-field"><span>${tr('Side tasks run on')}</span>
+            <select class="ce-in" data-sel="profile"><option value="">${tr('Current connection')}</option>${profileOptions(S().profileId)}</select></label>
+        <label class="ce-field"><span>${tr('Chat profile')}</span>
             <select class="ce-in" data-sel="chatprofile">${profileOptions(cmSel)}</select></label>
-        <button class="ce-btn" data-act="refresh">Update list</button>`
-        : `<p class="ce-note">No connection profiles found. Enable the Connection Manager extension to route side tasks to a cheaper model, or switch connections manually in SillyTavern.</p>
-           <button class="ce-btn" data-act="refresh">Update list</button>`}
+        <button class="ce-btn" data-act="refresh">${tr('Update list')}</button>`
+        : `<p class="ce-note">${tr('No connection profiles found. Enable the Connection Manager extension to route side tasks to a cheaper model, or switch connections manually in SillyTavern.')}</p>
+           <button class="ce-btn" data-act="refresh">${tr('Update list')}</button>`}
     </section>`;
     return h;
 }
@@ -912,8 +926,8 @@ const attrs = (d) => Object.entries(d || {}).map(([k, v]) => `data-${k}="${v}"`)
 const fld = (label, inner) => `<label class="ce-field"><span>${label}</span>${inner}</label>`;
 const inp = (f, val, d, ph = '') => `<input type="text" class="ce-in" data-f="${f}" ${attrs(d)} value="${esc(val)}" placeholder="${esc(ph)}">`;
 const txt = (f, val, d, rows = 3, lines = false) => `<textarea class="ce-in" rows="${rows}" data-f="${f}" ${lines ? 'data-lines="1"' : ''} ${attrs(d)}>${esc(lines ? (val || []).join('\n') : val)}</textarea>`;
-const pacingSelect = (val, d) => `<select class="ce-in" data-f="pacing" ${attrs(d)}><option value="">Use chat pace</option>${Object.entries(PACE).map(([k, v]) => `<option value="${k}" ${val === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select>`;
-const icon = (act, d, cls, label, fa) => `<button class="ce-mini ${cls || ''}" data-act="${act}" ${attrs(d)} aria-label="${label}" title="${label}"><i class="fa-solid ${fa}"></i></button>`;
+const pacingSelect = (val, d) => `<select class="ce-in" data-f="pacing" ${attrs(d)}><option value="">${tr('Use chat pace')}</option>${Object.entries(PACE).map(([k, v]) => `<option value="${k}" ${val === k ? 'selected' : ''}>${tr(v.label)}</option>`).join('')}</select>`;
+const icon = (act, d, cls, label, fa) => `<button class="ce-mini ${cls || ''}" data-act="${act}" ${attrs(d)} aria-label="${tr(label)}" title="${tr(label)}"><i class="fa-solid ${fa}"></i></button>`;
 const openAttr = (key) => (ui.expanded.has(key) ? 'open' : '');
 
 function beatHtml(ep, b, bi, ai, ei) {
@@ -921,15 +935,15 @@ function beatHtml(ep, b, bi, ai, ei) {
     const key = `b:${b.id}`;
     const mains = ep.beats.filter((x) => !x.branchOf && x.id !== b.id);
     return `<details class="ce-det ce-det-beat${b.branchOf ? ' is-branch' : ''}" data-key="${key}" ${openAttr(key)}>
-        <summary><span class="ce-chip ${b.priority === 'must' ? 'ce-chip-must' : ''}">${b.priority === 'must' ? 'Must' : 'Should'}</span><span data-sum="${key}">${esc(b.title)}</span>${b.branchOf ? '<span class="ce-chip">Branch</span>' : ''}</summary>
+        <summary><span class="ce-chip ${b.priority === 'must' ? 'ce-chip-must' : ''}">${b.priority === 'must' ? tr('Must') : tr('Should')}</span><span data-sum="${key}">${esc(b.title)}</span>${b.branchOf ? `<span class="ce-chip">${tr('Branch')}</span>` : ''}</summary>
         <div class="ce-det-body">
-            ${fld('Beat title', inp('title', b.title, d))}
-            ${fld('Description (what happens)', txt('description', b.description, d, 3))}
-            ${fld('Goals (one per line)', txt('goals', b.goals, d, 2, true))}
-            ${fld('Required events (one per line)', txt('requiredEvents', b.requiredEvents, d, 3, true))}
-            ${fld('Priority', `<select class="ce-in" data-f="priority" ${attrs(d)}><option value="should" ${b.priority !== 'must' ? 'selected' : ''}>Should happen</option><option value="must" ${b.priority === 'must' ? 'selected' : ''}>Must happen</option></select>`)}
-            ${fld('Branch of (optional)', `<select class="ce-in" data-f="branchOf" ${attrs(d)}><option value="">Main story</option>${mains.map((m) => `<option value="${m.id}" ${b.branchOf === m.id ? 'selected' : ''}>${esc(m.title)}</option>`).join('')}</select>`)}
-            ${fld('Branch trigger (when to take it)', inp('branchTrigger', b.branchTrigger, d, 'e.g. the player refuses the offer'))}
+            ${fld(tr('Beat title'), inp('title', b.title, d))}
+            ${fld(tr('Description (what happens)'), txt('description', b.description, d, 3))}
+            ${fld(tr('Goals (one per line)'), txt('goals', b.goals, d, 2, true))}
+            ${fld(tr('Required events (one per line)'), txt('requiredEvents', b.requiredEvents, d, 3, true))}
+            ${fld(tr('Priority'), `<select class="ce-in" data-f="priority" ${attrs(d)}><option value="should" ${b.priority !== 'must' ? 'selected' : ''}>${tr('Should happen')}</option><option value="must" ${b.priority === 'must' ? 'selected' : ''}>${tr('Must happen')}</option></select>`)}
+            ${fld(tr('Branch of (optional)'), `<select class="ce-in" data-f="branchOf" ${attrs(d)}><option value="">${tr('Main story')}</option>${mains.map((m) => `<option value="${m.id}" ${b.branchOf === m.id ? 'selected' : ''}>${esc(m.title)}</option>`).join('')}</select>`)}
+            ${fld(tr('Branch trigger (when to take it)'), inp('branchTrigger', b.branchTrigger, d, tr('e.g. the player refuses the offer')))}
             <div class="ce-actions">${icon('up', d, '', 'Move up', 'fa-arrow-up')}${icon('down', d, '', 'Move down', 'fa-arrow-down')}${icon('del', d, 'ce-danger', 'Delete beat', 'fa-trash')}</div>
         </div></details>`;
 }
@@ -940,43 +954,43 @@ function renderEditor() {
     ui.editId = ch?.id || null;
 
     let h = `<section class="ce-card">
-        <label class="ce-field"><span>Chronicle</span>
-            <select class="ce-in" data-sel="editchron">${chrons.length ? chrons.map((x) => `<option value="${x.id}" ${ch && x.id === ch.id ? 'selected' : ''}>${esc(x.title)}</option>`).join('') : '<option>No chronicles yet</option>'}</select></label>
+        <label class="ce-field"><span>${tr('Chronicle')}</span>
+            <select class="ce-in" data-sel="editchron">${chrons.length ? chrons.map((x) => `<option value="${x.id}" ${ch && x.id === ch.id ? 'selected' : ''}>${esc(x.title)}</option>`).join('') : `<option>${tr('No chronicles yet')}</option>`}</select></label>
         <div class="ce-actions">
-            <button class="ce-btn" data-act="new-chron">New</button>
-            <button class="ce-btn" data-act="dup-chron" ${ch ? '' : 'disabled'}>Duplicate</button>
-            <button class="ce-btn ce-danger" data-act="del-chron" ${ch ? '' : 'disabled'}>Delete</button>
+            <button class="ce-btn" data-act="new-chron">${tr('New')}</button>
+            <button class="ce-btn" data-act="dup-chron" ${ch ? '' : 'disabled'}>${tr('Duplicate')}</button>
+            <button class="ce-btn ce-danger" data-act="del-chron" ${ch ? '' : 'disabled'}>${tr('Delete')}</button>
         </div></section>`;
-    if (!ch) return h + emptyState('Start your first chronicle', 'A chronicle holds arcs. Each arc holds episodes, and each episode holds story beats.', '<button class="ce-btn ce-primary" data-act="new-chron">New chronicle</button>');
+    if (!ch) return h + emptyState(tr('Start your first chronicle'), tr('A chronicle holds arcs. Each arc holds episodes, and each episode holds story beats.'), `<button class="ce-btn ce-primary" data-act="new-chron">${tr('New chronicle')}</button>`);
 
     h += `<section class="ce-card">
-        ${ch.draft ? '<div class="ce-banner">Generated draft. Review it for mistakes, then <button class="ce-link" data-act="reviewed">mark it reviewed</button>.</div>' : ''}
-        ${fld('Title', inp('title', ch.title, {}))}
-        ${fld('Description', txt('description', ch.description, {}, 2))}
-        ${fld('Linked lorebook', `<input class="ce-in" list="ce-books" data-f="lorebook" value="${esc(ch.lorebook)}" placeholder="Lorebook name"><datalist id="ce-books">${ui.books.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>`)}
-        ${fld('Character cards (one name per line)', txt('characters', ch.characters, {}, 2, true))}
+        ${ch.draft ? `<div class="ce-banner">${tr('Generated draft. Review it for mistakes, then {action}.', { action: `<button class="ce-link" data-act="reviewed">${tr('mark it reviewed')}</button>` })}</div>` : ''}
+        ${fld(tr('Title'), inp('title', ch.title, {}))}
+        ${fld(tr('Description'), txt('description', ch.description, {}, 2))}
+        ${fld(tr('Linked lorebook'), `<input class="ce-in" list="ce-books" data-f="lorebook" value="${esc(ch.lorebook)}" placeholder="${tr('Lorebook name')}"><datalist id="ce-books">${ui.books.map((n) => `<option value="${esc(n)}">`).join('')}</datalist>`)}
+        ${fld(tr('Character cards (one name per line)'), txt('characters', ch.characters, {}, 2, true))}
     </section>`;
 
     ch.arcs.forEach((a, ai) => {
         const key = `a:${a.id}`;
         h += `<details class="ce-det ce-det-arc" data-key="${key}" ${openAttr(key)}><summary><span data-sum="${key}">${esc(a.title)}</span></summary><div class="ce-det-body">
-            ${fld('Arc title', inp('title', a.title, { a: ai }))}
-            ${fld('Arc summary (sent to the model)', txt('summary', a.summary, { a: ai }, 3))}
-            ${fld('Pacing override', pacingSelect(a.pacing, { a: ai }))}
+            ${fld(tr('Arc title'), inp('title', a.title, { a: ai }))}
+            ${fld(tr('Arc summary (sent to the model)'), txt('summary', a.summary, { a: ai }, 3))}
+            ${fld(tr('Pacing override'), pacingSelect(a.pacing, { a: ai }))}
             <div class="ce-actions">${icon('up', { a: ai }, '', 'Move arc up', 'fa-arrow-up')}${icon('down', { a: ai }, '', 'Move arc down', 'fa-arrow-down')}${icon('del', { a: ai }, 'ce-danger', 'Delete arc', 'fa-trash')}</div>`;
         a.episodes.forEach((ep, ei) => {
             const ekey = `e:${ep.id}`;
             const d = { a: ai, e: ei };
             h += `<details class="ce-det ce-det-ep" data-key="${ekey}" ${openAttr(ekey)}><summary><span data-sum="${ekey}">${esc(ep.title)}</span></summary><div class="ce-det-body">
-                ${fld('Episode title', inp('title', ep.title, d))}
+                ${fld(tr('Episode title'), inp('title', ep.title, d))}
                 <div class="ce-actions">${icon('up', d, '', 'Move episode up', 'fa-arrow-up')}${icon('down', d, '', 'Move episode down', 'fa-arrow-down')}${icon('del', d, 'ce-danger', 'Delete episode', 'fa-trash')}</div>
                 ${ep.beats.map((b, bi) => beatHtml(ep, b, bi, ai, ei)).join('')}
-                <button class="ce-btn" data-act="add-beat" ${attrs(d)}>Add beat</button>
+                <button class="ce-btn" data-act="add-beat" ${attrs(d)}>${tr('Add beat')}</button>
             </div></details>`;
         });
-        h += `<button class="ce-btn" data-act="add-ep" data-a="${ai}">Add episode</button></div></details>`;
+        h += `<button class="ce-btn" data-act="add-ep" data-a="${ai}">${tr('Add episode')}</button></div></details>`;
     });
-    h += '<button class="ce-btn ce-primary ce-wide" data-act="add-arc">Add arc</button>';
+    h += `<button class="ce-btn ce-primary ce-wide" data-act="add-arc">${tr('Add arc')}</button>`;
     return h;
 }
 
@@ -984,68 +998,69 @@ function renderEditor() {
 
 function renderWorlds() {
     const ch = editing();
-    if (!ch) return emptyState('Create a chronicle first', 'Worlds tools work on the chronicle you are editing.', '<button class="ce-btn ce-primary" data-act="new-chron">New chronicle</button>');
-    const bookOpts = (sel) => `<option value="">None</option>${ui.books.map((n) => `<option value="${esc(n)}" ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('')}`;
+    if (!ch) return emptyState(tr('Create a chronicle first'), tr('Worlds tools work on the chronicle you are editing.'), `<button class="ce-btn ce-primary" data-act="new-chron">${tr('New chronicle')}</button>`);
+    const bookOpts = (sel) => `<option value="">${tr('None')}</option>${ui.books.map((n) => `<option value="${esc(n)}" ${n === sel ? 'selected' : ''}>${esc(n)}</option>`).join('')}`;
     setTimeout(() => fillLore(ch), 0);
     return `
-    <section class="ce-card"><p class="ce-lbl">World for “${esc(ch.title)}”</p>
-        <label class="ce-field"><span>Linked lorebook</span><select class="ce-in" data-f="lorebook">${bookOpts(ch.lorebook)}</select></label>
-        <button class="ce-btn" data-act="refresh-books">Update list</button>
+    <section class="ce-card"><p class="ce-lbl">${th('World for “{title}”', { title: ch.title })}</p>
+        <label class="ce-field"><span>${tr('Linked lorebook')}</span><select class="ce-in" data-f="lorebook">${bookOpts(ch.lorebook)}</select></label>
+        <button class="ce-btn" data-act="refresh-books">${tr('Update list')}</button>
         <div id="ce-lore" class="ce-lore"></div>
     </section>
-    <section class="ce-card"><p class="ce-lbl">Generate a chronicle</p>
-        <p class="ce-note">Results are drafts. Models can get story details wrong, so review before use.</p>
-        <label class="ce-field"><span>From a lorebook</span><select class="ce-in" id="ce-gen-book">${bookOpts(ch.lorebook)}</select></label>
-        <button class="ce-btn" data-act="gen-lore">Generate from lorebook</button>
-        <label class="ce-field"><span>From a known fandom or story</span><input class="ce-in" id="ce-gen-fandom" type="text" placeholder="Name of the story or franchise"></label>
-        <label class="ce-field"><span>Part to cover (optional)</span><input class="ce-in" id="ce-gen-scope" type="text" placeholder="e.g. first season, first book"></label>
-        <button class="ce-btn" data-act="gen-fandom">Generate from fandom</button>
+    <section class="ce-card"><p class="ce-lbl">${tr('Generate a chronicle')}</p>
+        <p class="ce-note">${tr('Results are drafts. Models can get story details wrong, so review before use.')}</p>
+        <label class="ce-field"><span>${tr('From a lorebook')}</span><select class="ce-in" id="ce-gen-book">${bookOpts(ch.lorebook)}</select></label>
+        <button class="ce-btn" data-act="gen-lore">${tr('Generate from lorebook')}</button>
+        <label class="ce-field"><span>${tr('From a known fandom or story')}</span><input class="ce-in" id="ce-gen-fandom" type="text" placeholder="${tr('Name of the story or franchise')}"></label>
+        <label class="ce-field"><span>${tr('Part to cover (optional)')}</span><input class="ce-in" id="ce-gen-scope" type="text" placeholder="${tr('e.g. first season, first book')}"></label>
+        <button class="ce-btn" data-act="gen-fandom">${tr('Generate from fandom')}</button>
     </section>
-    <section class="ce-card"><p class="ce-lbl">Share</p>
-        <label class="ce-switch"><input type="checkbox" id="ce-exp-book" checked><span><b>Include the lorebook</b><small>Bundles its entries in the file</small></span></label>
-        <div class="ce-actions"><button class="ce-btn" data-act="export">Export JSON</button><button class="ce-btn" data-act="import-file">Import file</button></div>
-        <label class="ce-field"><span>Or paste JSON</span><textarea class="ce-in" id="ce-paste" rows="3" placeholder="Paste an exported chronicle here"></textarea></label>
-        <button class="ce-btn" data-act="import-paste">Import pasted JSON</button>
+    <section class="ce-card"><p class="ce-lbl">${tr('Share')}</p>
+        <label class="ce-switch"><input type="checkbox" id="ce-exp-book" checked><span><b>${tr('Include the lorebook')}</b><small>${tr('Bundles its entries in the file')}</small></span></label>
+        <div class="ce-actions"><button class="ce-btn" data-act="export">${tr('Export JSON')}</button><button class="ce-btn" data-act="import-file">${tr('Import file')}</button></div>
+        <label class="ce-field"><span>${tr('Or paste JSON')}</span><textarea class="ce-in" id="ce-paste" rows="3" placeholder="${tr('Paste an exported chronicle here')}"></textarea></label>
+        <button class="ce-btn" data-act="import-paste">${tr('Import pasted JSON')}</button>
     </section>`;
 }
 
 async function fillLore(ch) {
     const box = $q('#ce-lore');
     if (!box) return;
-    if (!ch.lorebook) { box.innerHTML = '<p class="ce-note">Pick a lorebook to edit its entries here.</p>'; return; }
+    if (!ch.lorebook) { box.innerHTML = `<p class="ce-note">${tr('Pick a lorebook to edit its entries here.')}</p>`; return; }
     try {
         const ents = await entriesOf(ch.lorebook);
-        box.innerHTML = ents.map((e) => `<details class="ce-det" data-key="l:${e.uid}"><summary>${esc((e.key || []).join(', ') || e.comment || 'Entry')}</summary>
+        box.innerHTML = ents.map((e) => `<details class="ce-det" data-key="l:${e.uid}"><summary>${esc((e.key || []).join(', ') || e.comment || tr('Entry'))}</summary>
             <div class="ce-det-body ce-lore-row" data-uid="${e.uid}">
-                <label class="ce-field"><span>Keys (comma separated)</span><input class="ce-in ce-lore-keys" type="text" value="${esc((e.key || []).join(', '))}"></label>
-                <label class="ce-field"><span>Content</span><textarea class="ce-in ce-lore-content" rows="4">${esc(e.content || '')}</textarea></label>
-                <div class="ce-actions"><button class="ce-btn ce-primary" data-act="lore-save" data-uid="${e.uid}">Save entry</button><button class="ce-btn ce-danger" data-act="lore-del" data-uid="${e.uid}">Delete</button></div>
-            </div></details>`).join('') + '<button class="ce-btn" data-act="lore-add">Add entry</button>';
+                <label class="ce-field"><span>${tr('Keys (comma separated)')}</span><input class="ce-in ce-lore-keys" type="text" value="${esc((e.key || []).join(', '))}"></label>
+                <label class="ce-field"><span>${tr('Content')}</span><textarea class="ce-in ce-lore-content" rows="4">${esc(e.content || '')}</textarea></label>
+                <div class="ce-actions"><button class="ce-btn ce-primary" data-act="lore-save" data-uid="${e.uid}">${tr('Save entry')}</button><button class="ce-btn ce-danger" data-act="lore-del" data-uid="${e.uid}">${tr('Delete')}</button></div>
+            </div></details>`).join('') + `<button class="ce-btn" data-act="lore-add">${tr('Add entry')}</button>`;
     } catch (e) {
         console.warn(e);
-        box.innerHTML = '<p class="ce-note">Could not read this lorebook. Check the name, or update the list.</p>';
+        box.innerHTML = `<p class="ce-note">${tr('Could not read this lorebook. Check the name, or update the list.')}</p>`;
     }
 }
 
 /* ---- Features ---- */
 
 function renderFeatures() {
-    const sw = (path, label, hint = '') => `<label class="ce-switch"><input type="checkbox" data-set="${path}" ${getPath(S(), path) ? 'checked' : ''}><span><b>${label}</b>${hint ? `<small>${hint}</small>` : ''}</span></label>`;
-    const num = (path, label, hint, min, max) => `<label class="ce-field"><span>${label}</span><input class="ce-in" type="number" min="${min}" max="${max}" data-set="${path}" value="${esc(getPath(S(), path))}"><small class="ce-note">${hint}</small></label>`;
+    const sw = (path, label, hint = '') => `<label class="ce-switch"><input type="checkbox" data-set="${path}" ${getPath(S(), path) ? 'checked' : ''}><span><b>${tr(label)}</b>${hint ? `<small>${tr(hint)}</small>` : ''}</span></label>`;
+    const num = (path, label, hint, min, max) => `<label class="ce-field"><span>${tr(label)}</span><input class="ce-in" type="number" min="${min}" max="${max}" data-set="${path}" value="${esc(getPath(S(), path))}"><small class="ce-note">${tr(hint)}</small></label>`;
     return `
-    <section class="ce-card"><p class="ce-lbl">General</p>
+    <section class="ce-card"><p class="ce-lbl">${tr('General')}</p>
         ${sw('enabled', 'Chronicle Engine on', 'Master switch for every chat')}
         ${sw('showFab', 'Floating button', 'Drag it anywhere. Tap to open')}
-        <label class="ce-field"><span>Default pacing</span><select class="ce-in" data-set="defaultPacing">${Object.entries(PACE).map(([k, v]) => `<option value="${k}" ${S().defaultPacing === k ? 'selected' : ''}>${v.label}</option>`).join('')}</select></label>
+        <label class="ce-field"><span>${tr('Language')}</span><select class="ce-in" data-set="language">${LANGUAGES.map((l) => `<option value="${l.id}" ${S().language === l.id ? 'selected' : ''}>${l.id === 'auto' ? tr('Auto (follow SillyTavern)') : l.name}</option>`).join('')}</select></label>
+        <label class="ce-field"><span>${tr('Default pacing')}</span><select class="ce-in" data-set="defaultPacing">${Object.entries(PACE).map(([k, v]) => `<option value="${k}" ${S().defaultPacing === k ? 'selected' : ''}>${tr(v.label)}</option>`).join('')}</select></label>
         ${num('injectDepth', 'Injection depth', 'How many messages from the end the guidance is placed', 0, 20)}
     </section>
-    <section class="ce-card"><p class="ce-lbl">Story steering</p>
+    <section class="ce-card"><p class="ce-lbl">${tr('Story steering')}</p>
         ${sw('features.nudge', 'Dynamic nudge', 'Push toward the beat when the chat stalls')}
         ${num('nudgeAfter', 'Nudge after (messages)', 'Counted since the last beat change. Slow pace waits longer, fast waits less', 2, 60)}
         ${sw('features.judge', 'Beat check', 'Adds a button that asks the model if the beat is done')}
         ${num('judgeEvery', 'Auto-check every N replies', '0 turns it off. Uses the side-task profile', 0, 50)}
     </section>
-    <section class="ce-card"><p class="ce-lbl">Extras</p>
+    <section class="ce-card"><p class="ce-lbl">${tr('Extras')}</p>
         ${sw('features.recap', 'Arc recap', 'Short recap when a new episode starts')}
         ${sw('features.epilogue', 'Epilogue generator', 'Offer an epilogue when an arc ends')}
         ${sw('features.whatsNext', 'What\'s next?', 'Suggest the next arc or branch')}
@@ -1089,27 +1104,27 @@ const ACTIONS = {
     complete: () => advance('completed'),
     skip: () => advance('skipped'),
     rewind: () => rewind(),
-    check: (d, t) => enqueue('Checking beat', () => judgeBeat(false), t),
+    check: (d, t) => enqueue(tr('Checking beat'), () => judgeBeat(false), t),
     branch: (d) => branchInto(d.id),
     jump: (d) => jump(d.id),
     pace: (d) => { const st = cs(true); st.pacing = d.v; commit(); },
-    whatsnext: (d, t) => enqueue('Thinking about what comes next', () => whatsNext(), t),
-    continuity: (d, t) => enqueue('Checking continuity', () => checkContinuity(), t),
+    whatsnext: (d, t) => enqueue(tr('Thinking about what comes next'), () => whatsNext(), t),
+    continuity: (d, t) => enqueue(tr('Checking continuity'), () => checkContinuity(), t),
     recap: (d, t) => {
         const cur = findBeat(activeChron(), cs()?.activeBeatId);
-        if (cur) enqueue('Writing recap', () => generateRecap(cur.ep), t);
+        if (cur) enqueue(tr('Writing recap'), () => generateRecap(cur.ep), t);
     },
     epilogue: (d, t) => {
         const ch = activeChron();
         const cur = findBeat(ch, cs()?.activeBeatId);
         const arc = cur?.arc || ch?.arcs[ch.arcs.length - 1];
-        if (arc) enqueue('Writing epilogue', () => generateEpilogue(arc), t);
+        if (arc) enqueue(tr('Writing epilogue'), () => generateEpilogue(arc), t);
     },
-    refresh: async () => { await refreshBooks(); render(); toast('success', 'Lists updated.'); },
-    'refresh-books': async () => { await refreshBooks(); render(); toast('success', 'Lorebook list updated.'); },
+    refresh: async () => { await refreshBooks(); render(); toast('success', tr('Lists updated.')); },
+    'refresh-books': async () => { await refreshBooks(); render(); toast('success', tr('Lorebook list updated.')); },
 
     'new-chron': () => {
-        const ch = newChronicle(`Chronicle ${S().chronicles.length + 1}`);
+        const ch = newChronicle(tr('Chronicle {n}', { n: S().chronicles.length + 1 }));
         S().chronicles.push(ch);
         ui.editId = ch.id;
         ui.view = 'edit';
@@ -1119,14 +1134,14 @@ const ACTIONS = {
     'dup-chron': () => {
         const ch = editing();
         if (!ch) return;
-        const copy = normalizeChronicle({ ...clone(ch), title: `${ch.title} (copy)` });
+        const copy = normalizeChronicle({ ...clone(ch), title: tr('{title} (copy)', { title: ch.title }) });
         S().chronicles.push(copy);
         ui.editId = copy.id;
         editorChanged();
     },
     'del-chron': () => {
         const ch = editing();
-        if (!ch || !window.confirm(`Delete "${ch.title}"? This cannot be undone. Export it first if you want a backup.`)) return;
+        if (!ch || !window.confirm(tr('Delete "{title}"? This cannot be undone. Export it first if you want a backup.', { title: ch.title }))) return;
         S().chronicles = S().chronicles.filter((x) => x.id !== ch.id);
         ui.editId = null;
         editorChanged();
@@ -1156,7 +1171,7 @@ const ACTIONS = {
     up: (d) => { const arr = arrayAt(d); const i = indexAt(d); if (i > 0) { [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]; editorChanged(); } },
     down: (d) => { const arr = arrayAt(d); const i = indexAt(d); if (i < arr.length - 1) { [arr[i + 1], arr[i]] = [arr[i], arr[i + 1]]; editorChanged(); } },
     del: (d) => {
-        if (!window.confirm('Delete this item and everything inside it?')) return;
+        if (!window.confirm(tr('Delete this item and everything inside it?'))) return;
         const arr = arrayAt(d);
         const [removed] = arr.splice(indexAt(d), 1);
         if (d.b !== undefined) arr.forEach((b) => { if (b.branchOf === removed.id) b.branchOf = ''; });
@@ -1165,10 +1180,10 @@ const ACTIONS = {
 
     'gen-lore': (d, t) => {
         const name = $q('#ce-gen-book')?.value;
-        if (!name) { toast('warning', 'Pick a lorebook first.'); return; }
-        enqueue('Generating draft from lorebook', async () => {
+        if (!name) { toast('warning', tr('Pick a lorebook first.')); return; }
+        enqueue(tr('Generating draft from lorebook'), async () => {
             const ents = (await entriesOf(name)).filter((e) => !e.disable);
-            if (!ents.length) { toast('warning', 'That lorebook has no entries.'); return; }
+            if (!ents.length) { toast('warning', tr('That lorebook has no entries.')); return; }
             const src = ents.map((e) => `${(e.key || []).join(', ')}: ${e.content}`).join('\n').slice(0, 14000);
             await generateChronicleFrom(`lorebook "${name}"`, src, name);
         }, t);
@@ -1176,21 +1191,21 @@ const ACTIONS = {
     'gen-fandom': (d, t) => {
         const name = $q('#ce-gen-fandom')?.value.trim();
         const scope = $q('#ce-gen-scope')?.value.trim();
-        if (!name) { toast('warning', 'Enter the name of a story or franchise.'); return; }
-        enqueue('Generating draft', () => generateChronicleFrom(
+        if (!name) { toast('warning', tr('Enter the name of a story or franchise.')); return; }
+        enqueue(tr('Generating draft'), () => generateChronicleFrom(
             'known story',
             `Outline the story of "${name}"${scope ? `, covering only: ${scope}` : ''}, as a roleplay campaign. Use only what you reliably know of the original.`,
         ), t);
     },
     export: (d, t) => {
         const ch = editing();
-        if (ch) enqueue('Exporting', () => exportChronicle(ch, $q('#ce-exp-book')?.checked), t);
+        if (ch) enqueue(tr('Exporting'), () => exportChronicle(ch, $q('#ce-exp-book')?.checked), t);
     },
     'import-file': () => $q('#ce-file').click(),
     'import-paste': (d, t) => {
         const v = $q('#ce-paste')?.value;
-        if (!v?.trim()) { toast('warning', 'Paste some JSON first.'); return; }
-        enqueue('Importing', () => importChronicle(v), t);
+        if (!v?.trim()) { toast('warning', tr('Paste some JSON first.')); return; }
+        enqueue(tr('Importing'), () => importChronicle(v), t);
     },
 
     'lore-save': async (d, t) => {
@@ -1202,26 +1217,26 @@ const ACTIONS = {
             e.key = $q('.ce-lore-keys', row).value.split(',').map((s) => s.trim()).filter(Boolean);
             e.content = $q('.ce-lore-content', row).value;
             await saveBook(ch.lorebook, data);
-            toast('success', 'Entry saved.');
+            toast('success', tr('Entry saved.'));
             fillLore(ch);
-        } catch (e) { console.warn(e); toast('error', 'Could not save the entry.'); }
+        } catch (e) { console.warn(e); toast('error', tr('Could not save the entry.')); }
     },
     'lore-del': async (d) => {
         const ch = editing();
-        if (!window.confirm('Delete this lorebook entry?')) return;
+        if (!window.confirm(tr('Delete this lorebook entry?'))) return;
         try {
             const data = await loadBook(ch.lorebook);
             delete data.entries[d.uid];
             await saveBook(ch.lorebook, data);
             fillLore(ch);
-        } catch (e) { console.warn(e); toast('error', 'Could not delete the entry.'); }
+        } catch (e) { console.warn(e); toast('error', tr('Could not delete the entry.')); }
     },
     'lore-add': async () => {
         const ch = editing();
         try {
-            await addEntry(ch.lorebook, { keys: ['new entry'], content: '', comment: '' });
+            await addEntry(ch.lorebook, { keys: [tr('new entry')], content: '', comment: '' });
             fillLore(ch);
-        } catch (e) { console.warn(e); toast('error', 'Could not add an entry.'); }
+        } catch (e) { console.warn(e); toast('error', tr('Could not add an entry.')); }
     },
 };
 
@@ -1254,10 +1269,10 @@ async function onSel(t) {
         if (!p) return;
         try {
             await ctx().executeSlashCommandsWithOptions(`/profile ${p.name}`);
-            toast('success', `Chat profile: ${p.name}`);
+            toast('success', tr('Chat profile: {name}', { name: p.name }));
         } catch (e) {
             console.warn(e);
-            toast('warning', 'Could not switch the profile. Change it in the Connection Manager instead.');
+            toast('warning', tr('Could not switch the profile. Change it in the Connection Manager instead.'));
         }
     } else if (k === 'editchron') {
         ui.editId = v;
@@ -1270,6 +1285,7 @@ function onSet(t) {
     const v = t.type === 'checkbox' ? t.checked : t.type === 'number' ? Number(t.value) : t.value;
     setPath(S(), path, v);
     saveSettings();
+    if (path === 'language') { applyLanguage(); return; }
     refreshPrompt();
     updateFab();
     syncPanel();
@@ -1298,7 +1314,7 @@ function onEditField(t) {
     if (d.f === 'title') {
         const prefix = d.b !== undefined ? 'b' : d.e !== undefined ? 'e' : d.a !== undefined ? 'a' : null;
         const el = prefix && $q(`[data-sum="${prefix}:${obj.id}"]`);
-        if (el) el.textContent = v || 'Untitled';
+        if (el) el.textContent = v || tr('Untitled');
     }
     saveSettings();
     refreshPrompt();
@@ -1392,16 +1408,16 @@ function buildDom() {
     const root = document.createElement('div');
     root.id = 'ce-root';
     root.innerHTML = `
-        <button id="ce-fab" type="button" aria-label="Open Chronicle Engine" title="Chronicle Engine"><i class="fa-solid fa-book-open"></i></button>
+        <button id="ce-fab" type="button" aria-label="Open Chronicle Engine" data-i18n-aria="Open Chronicle Engine" title="Chronicle Engine"><i class="fa-solid fa-book-open"></i></button>
         <div id="ce-scrim"></div>
         <aside id="ce-drawer" role="dialog" aria-label="Chronicle Engine" aria-hidden="true">
             <div class="ce-grab" aria-hidden="true"></div>
-            <header class="ce-head"><h2>Chronicle Engine</h2><button id="ce-close" type="button" class="ce-mini" aria-label="Close"><i class="fa-solid fa-xmark"></i></button></header>
+            <header class="ce-head"><h2>Chronicle Engine</h2><button id="ce-close" type="button" class="ce-mini" aria-label="Close" data-i18n-aria="Close"><i class="fa-solid fa-xmark"></i></button></header>
             <nav id="ce-tabs" role="tablist">
-                <button type="button" role="tab" data-view="dash">Dashboard</button>
-                <button type="button" role="tab" data-view="edit">Edit</button>
-                <button type="button" role="tab" data-view="worlds">Worlds</button>
-                <button type="button" role="tab" data-view="features">Features</button>
+                <button type="button" role="tab" data-view="dash" data-i18n="Dashboard">Dashboard</button>
+                <button type="button" role="tab" data-view="edit" data-i18n="Edit">Edit</button>
+                <button type="button" role="tab" data-view="worlds" data-i18n="Worlds">Worlds</button>
+                <button type="button" role="tab" data-view="features" data-i18n="Features">Features</button>
             </nav>
             <div id="ce-body"></div>
             <input id="ce-file" type="file" accept=".json,application/json" hidden>
@@ -1423,28 +1439,46 @@ function buildDom() {
     $q('#ce-file').addEventListener('change', async (e) => {
         const file = e.target.files?.[0];
         e.target.value = '';
-        if (file) enqueue('Importing', async () => importChronicle(await file.text()));
+        if (file) enqueue(tr('Importing'), async () => importChronicle(await file.text()));
     });
     initFab();
 }
 
 function buildSettingsPanel() {
     const html = `
-    <div class="inline-drawer">
+    <div class="inline-drawer" id="ce-settings">
         <div class="inline-drawer-toggle inline-drawer-header"><b>Chronicle Engine</b><div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div></div>
         <div class="inline-drawer-content">
-            <label class="checkbox_label"><input id="ce_enabled" type="checkbox"><span>Enable Chronicle Engine</span></label>
-            <label class="checkbox_label"><input id="ce_fab" type="checkbox"><span>Show floating button</span></label>
-            <div id="ce_open" class="menu_button">Open Chronicle Engine</div>
+            <label class="checkbox_label"><input id="ce_enabled" type="checkbox"><span data-i18n="Enable Chronicle Engine">Enable Chronicle Engine</span></label>
+            <label class="checkbox_label"><input id="ce_fab" type="checkbox"><span data-i18n="Show floating button">Show floating button</span></label>
+            <label for="ce_lang"><small data-i18n="Language">Language</small></label>
+            <select id="ce_lang" class="text_pole">${LANGUAGES.map((l) => `<option value="${l.id}"${l.id === 'auto' ? ' data-i18n="Auto (follow SillyTavern)"' : ''}>${l.id === 'auto' ? 'Auto (follow SillyTavern)' : l.name}</option>`).join('')}</select>
+            <div id="ce_open" class="menu_button" data-i18n="Open Chronicle Engine">Open Chronicle Engine</div>
         </div>
     </div>`;
     $('#extensions_settings2').append(html);
     $('#ce_enabled').on('change', function () { S().enabled = this.checked; saveSettings(); refreshPrompt(); render(); });
     $('#ce_fab').on('change', function () { S().showFab = this.checked; saveSettings(); updateFab(); render(); });
     $('#ce_open').on('click', () => toggleDrawer(true));
+    $('#ce_lang').on('change', function () { S().language = this.value; saveSettings(); applyLanguage(); });
     syncPanel();
 }
+
+/** Refresh text of the static (non-templated) parts of the UI. */
+function translateStatic() {
+    document.querySelectorAll('#ce-root [data-i18n], #ce-settings [data-i18n]').forEach((el) => { el.textContent = tr(el.dataset.i18n); });
+    document.querySelectorAll('#ce-root [data-i18n-aria]').forEach((el) => { el.setAttribute('aria-label', tr(el.dataset.i18nAria)); });
+}
+
+function applyLanguage() {
+    setLanguage(S().language);
+    translateStatic();
+    syncPanel();
+    render();
+}
+
 function syncPanel() {
+    $('#ce_lang').val(S().language);
     $('#ce_enabled').prop('checked', !!S().enabled);
     $('#ce_fab').prop('checked', !!S().showFab);
 }
@@ -1467,7 +1501,7 @@ function onMessageReceived() {
     st.judgeCount = (st.judgeCount || 0) + 1;
     if (st.judgeCount >= n) {
         st.judgeCount = 0;
-        enqueue('Checking beat', () => judgeBeat(true));
+        enqueue(tr('Checking beat'), () => judgeBeat(true));
     }
     saveChat();
 }
@@ -1476,6 +1510,7 @@ jQuery(async () => {
     loadSettings();
     buildDom();
     buildSettingsPanel();
+    translateStatic();
 
     const c = ctx();
     const ev = c.eventTypes || c.event_types;
